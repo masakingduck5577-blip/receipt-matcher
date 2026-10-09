@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f6f6f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121212" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="領収書">
+<meta name="format-detection" content="telephone=no">
+<title>領収書マッチャー</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23161616'/%3E%3Cpath d='M20 14h24v36l-4-3-4 3-4-3-4 3-4-3-4 3z' fill='%23fff'/%3E%3Cpath d='M25 24h14M25 31h14M25 38h8' stroke='%23161616' stroke-width='3'/%3E%3C/svg%3E">
+<style>
+/* 1カラムのモバイルファースト。上に指定金額、中央に領収書リストと追加欄、画面下に常に結果バー。モノトーン、外部依存なし */
+:root {
+  --bg: #f6f6f5;
+  --paper: #ffffff;
+  --ink: #161616;
+  --muted: #6d6d6b;
+  --line: #d9d9d6;
+  --soft: #ececea;
+  --font-body: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Meiryo", sans-serif;
+  --font-num: ui-monospace, "SF Mono", Menlo, "Roboto Mono", Consolas, monospace;
+  --bar-h: 76px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121212; --paper: #1b1b1b; --ink: #ededeb; --muted: #9a9a97; --line: #343432; --soft: #262625;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.6;
+  padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right));
+  padding-block: calc(20px + env(safe-area-inset-top)) calc(var(--bar-h) + 32px + env(safe-area-inset-bottom));
+}
+main { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+section > * { min-width: 0; }
+input, textarea { width: 100%; }
+[hidden] { display: none !important; }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+header h1 { font-size: 20px; font-weight: 700; margin: 0; letter-spacing: .02em; }
+header p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.label {
+  font-size: 12px; letter-spacing: .12em; color: var(--muted);
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px;
+}
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+section { display: grid; }
+
+/* 指定金額 */
+.target { display: flex; align-items: center; gap: 6px; border-bottom: 2px solid var(--ink); }
+.target span { font-family: var(--font-num); font-size: 24px; color: var(--muted); }
+.target input {
+  flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink);
+  font-family: var(--font-num); font-size: 34px; font-weight: 500; padding: 4px 0; outline: none;
+  border-radius: 0;
+}
+
+/* 追加欄 */
+.adder { display: flex; gap: 8px; }
+.adder input {
+  flex: 1; min-width: 0; height: 52px; padding: 0 14px;
+  border: 1px solid var(--ink); background: var(--paper); color: var(--ink); border-radius: 0;
+  font-family: var(--font-num); font-size: 20px; text-align: right;
+}
+.adder input::placeholder { font-family: var(--font-body); font-size: 15px; color: var(--muted); text-align: left; }
+.adder button { width: 64px; height: 52px; font-size: 26px; }
+
+/* リスト */
+.ledger { background: var(--paper); border: 1px solid var(--line); margin-top: 10px; }
+.row {
+  display: grid; grid-template-columns: 2.2em 1fr 48px; align-items: center; gap: 4px;
+  padding-left: 12px; border-bottom: 1px solid var(--soft); min-height: 54px;
+}
+.row:last-child { border-bottom: 0; }
+.row .idx { color: var(--muted); font-size: 12px; }
+.row input {
+  width: 100%; min-width: 0; height: 44px; border: 0; background: transparent; color: var(--ink);
+  font-family: var(--font-num); font-size: 18px; text-align: right; padding: 0 4px; border-radius: 0;
+}
+.row input:focus { outline: none; box-shadow: inset 0 -2px 0 var(--ink); }
+.row.hit { background: var(--soft); }
+.row.hit .idx { color: var(--ink); font-weight: 700; }
+.row.hit .idx::after { content: " ✓"; }
+.row.empty { grid-template-columns: 1fr; padding: 16px; color: var(--muted); font-size: 14px; }
+.del {
+  width: 48px; height: 54px; border: 0; background: transparent; color: var(--muted);
+  font-size: 22px; cursor: pointer;
+}
+.del:active { color: var(--ink); }
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.btn {
+  font-family: var(--font-body); font-size: 14px; cursor: pointer; min-height: 44px;
+  border: 1px solid var(--ink); background: transparent; color: var(--ink); padding: 0 16px; border-radius: 0;
+}
+.btn:active { background: var(--soft); }
+.btn.primary { background: var(--ink); color: var(--bg); }
+.btn.ghost { border-color: var(--line); color: var(--muted); }
+button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.bulk { display: grid; gap: 8px; margin-top: 10px; }
+.bulk textarea {
+  width: 100%; min-height: 120px; resize: vertical; padding: 12px; border-radius: 0;
+  border: 1px solid var(--line); background: var(--paper); color: var(--ink);
+  font-family: var(--font-num); font-size: 16px;
+}
+.hint { font-size: 12px; color: var(--muted); margin: 0; }
+
+/* 確認ステップ（confirm() の代わり） */
+.confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font-size: 14px; }
+
+/* 結果の詳細 */
+.slip { background: var(--paper); border: 1px solid var(--ink); padding: 18px; display: grid; gap: 14px; }
+.figures { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0; }
+.figures div { display: grid; gap: 2px; min-width: 0; }
+.figures .big { grid-column: 1 / -1; }
+.figures dt { font-size: 12px; letter-spacing: .1em; color: var(--muted); }
+.figures dd { margin: 0; font-family: var(--font-num); font-size: 20px; font-weight: 500; overflow-wrap: anywhere; }
+.figures .big dd { font-size: 30px; }
+.picked { list-style: none; margin: 0; padding: 0; border-top: 1px dashed var(--line); }
+.picked li {
+  display: flex; justify-content: space-between; gap: 12px; padding: 8px 0;
+  border-bottom: 1px dashed var(--line); font-family: var(--font-num); font-size: 15px;
+}
+.picked li span:first-child { color: var(--muted); }
+.status { font-size: 14px; margin: 0; }
+
+/* 画面下の結果バー */
+.bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+  background: var(--ink); color: var(--bg);
+  padding: 10px max(16px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+.bar-inner {
+  max-width: 560px; margin: 0 auto; min-height: calc(var(--bar-h) - 20px);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.bar .k { font-size: 11px; letter-spacing: .1em; opacity: .7; display: block; }
+.bar .v { font-family: var(--font-num); font-size: 22px; font-weight: 500; line-height: 1.2; }
+.bar .v.small { font-size: 16px; }
+.bar-figs { display: flex; gap: 20px; min-width: 0; }
+.bar button {
+  border: 1px solid var(--bg); background: transparent; color: var(--bg);
+  min-height: 44px; padding: 0 14px; font-family: var(--font-body); font-size: 14px; cursor: pointer; border-radius: 0;
+  flex-shrink: 0;
+}
+
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 20;
+  bottom: calc(var(--bar-h) + 16px + env(safe-area-inset-bottom));
+  background: var(--paper); color: var(--ink); border: 1px solid var(--ink);
+  padding: 8px 16px; font-size: 14px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .row { transition: background-color .15s; }
+  html { scroll-behavior: smooth; }
+}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>領収書マッチャー</h1>
+      <p>指定金額以下で、合計が最も近い組み合わせを探します</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="label"><label for="target">指定金額</label></div>
+    <div class="target">
+      <span>¥</span>
+      <input id="target" type="text" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="0">
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>領収書</span><span class="num" id="count"></span></div>
+    <form class="adder" id="adder" autocomplete="off">
+      <input id="new-amount" type="text" inputmode="numeric" enterkeyhint="done" placeholder="金額を入力して追加" aria-label="追加する領収書の金額">
+      <button class="btn primary" type="submit" aria-label="追加">＋</button>
+    </form>
+    <div class="ledger" id="ledger"></div>
+    <div class="actions">
+      <button class="btn" id="toggle-bulk" type="button">まとめて入力</button>
+      <button class="btn" id="sample" type="button">サンプルを入れる</button>
+      <button class="btn ghost" id="clear" type="button">すべて消去</button>
+    </div>
+    <div class="confirm" id="confirm-clear" hidden>
+      <span>指定金額と領収書をすべて消去しますか？</span>
+      <button class="btn primary" id="clear-yes" type="button">消去する</button>
+      <button class="btn" id="clear-no" type="button">やめる</button>
+    </div>
+    <div class="bulk" id="bulk" hidden>
+      <textarea id="bulk-text" placeholder="例：1280, 3500, 980&#10;改行・カンマ・スペース区切りで入力"></textarea>
+      <div class="actions" style="margin-top:0">
+        <button class="btn primary" id="bulk-add" type="button">追加する</button>
+        <button class="btn" id="bulk-replace" type="button">置き換える</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="detail">
+    <div class="label"><span>結果</span></div>
+    <div class="slip">
+      <dl class="figures">
+        <div class="big"><dt>合計</dt><dd id="r-total">—</dd></div>
+        <div><dt>残り（差額）</dt><dd id="r-diff">—</dd></div>
+        <div><dt>枚数</dt><dd id="r-n">—</dd></div>
+      </dl>
+      <p class="status" id="r-status"></p>
+      <ul class="picked" id="r-list"></ul>
+      <div class="actions" style="margin-top:0">
+        <button class="btn" id="copy" type="button" hidden>結果をコピー</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="bar" role="status" aria-live="polite">
+  <div class="bar-inner">
+    <div class="bar-figs">
+      <div><span class="k">合計</span><span class="v" id="b-total">—</span></div>
+      <div><span class="k">残り</span><span class="v small" id="b-diff">—</span></div>
+    </div>
+    <button type="button" id="to-detail">内訳 <span id="b-n"></span></button>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const fmt = n => '¥' + n.toLocaleString('ja-JP');
+  const pad = i => String(i + 1).padStart(2, '0');
+  const parse = s => {
+    const t = String(s)
+      .replace(/[０-９．]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+      .replace(/[,，¥￥円\s]/g, '');
+    if (t === '') return null;
+    const v = Number(t);
+    return Number.isFinite(v) && v >= 0 ? Math.round(v) : NaN;
+  };
+  const STORE = 'receipt-matcher-v1';
+  const SAMPLE = { target: 10000, receipts: [1280, 3450, 2200, 980, 4120, 1575, 860, 2730] };
+
+  let target = null;
+  let receipts = [];
+  let hits = new Set();
+  let lastResult = null;
+
+  // 端末内に保存（使えない環境では無視）
+  function save() {
+    try { localStorage.setItem(STORE, JSON.stringify({ target, receipts })); } catch (e) {}
+  }
+  function load() {
+    try {
+      const d = JSON.parse(localStorage.getItem(STORE));
+      if (d && Array.isArray(d.receipts)) return d;
+    } catch (e) {}
+    return null;
+  }
+
+  function renderLedger() {
+    const ledger = $('ledger');
+    ledger.innerHTML = '';
+    if (!receipts.length) {
+      ledger.innerHTML = '<div class="row empty">まだ領収書がありません。上の欄に金額を入力して「＋」で追加してください。</div>';
+    }
+    receipts.forEach((v, i) => {
+      const row = document.createElement('div');
+      row.className = 'row' + (hits.has(i) ? ' hit' : '');
+      row.innerHTML =
+        '<span class="idx num">' + pad(i) + '</span>' +
+        '<input id="r' + i + '" type="text" inputmode="numeric" enterkeyhint="done" autocomplete="off" aria-label="領収書' + (i + 1) + 'の金額">' +
+        '<button class="del" type="button" aria-label="領収書' + (i + 1) + 'を削除">×</button>';
+      const inp = row.querySelector('input');
+      inp.value = v === null ? '' : (Number.isNaN(v) ? '' : v.toLocaleString('ja-JP'));
+      inp.addEventListener('focus', () => inp.select());
+      inp.addEventListener('input', () => { receipts[i] = parse(inp.value); save(); schedule(); });
+      inp.addEventListener('blur', () => { const p = parse(inp.value); if (Number.isFinite(p)) inp.value = p.toLocaleString('ja-JP'); });
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } });
+      row.querySelector('.del').addEventListener('click', () => {
+        receipts.splice(i, 1); hits = new Set(); save(); renderLedger(); solve();
+      });
+      ledger.appendChild(row);
+    });
+    $('count').textContent = receipts.length + ' 件';
+  }
+
+  function paintHits() {
+    document.querySelectorAll('#ledger .row').forEach((row, i) => row.classList.toggle('hit', hits.has(i)));
+  }
+
+  function gcd(a, b) { while (b) { const t = a % b; a = b; b = t; } return a; }
+
+  // 0/1 部分和の動的計画法。parent[s] = 合計 s に最初に到達した領収書の番号（-1 は未到達）
+  function bestSubset(items, limit) {
+    const valid = [];
+    items.forEach((v, i) => { if (Number.isFinite(v) && v > 0 && v <= limit) valid.push({ v: v, i: i }); });
+    if (!valid.length) return { sum: 0, idx: [] };
+    const all = valid.reduce((a, o) => a + o.v, 0);
+    if (all <= limit) return { sum: all, idx: valid.map(o => o.i) };
+    if (valid.length > 32000) throw new Error('too-many');
+    const g = valid.reduce((a, o) => gcd(a, o.v), 0);
+    const T = Math.min(Math.floor(limit / g), all / g);
+    if (T > 20000000) throw new Error('too-large');
+    const w = valid.map(o => o.v / g);
+    const parent = new Int16Array(T + 1).fill(-1);
+    parent[0] = 32767;
+    let best = 0;
+    for (let k = 0; k < w.length; k++) {
+      const a = w[k];
+      for (let s = T; s >= a; s--) {
+        if (parent[s] === -1 && parent[s - a] !== -1) {
+          parent[s] = k;
+          if (s > best) best = s;
+        }
+      }
+      if (best === T) break;
+    }
+    const idx = [];
+    let s = best;
+    while (s > 0) { const k = parent[s]; idx.push(valid[k].i); s -= w[k]; }
+    return { sum: best * g, idx: idx.sort((x, y) => x - y) };
+  }
+
+  let timer = 0;
+  function schedule() { clearTimeout(timer); timer = setTimeout(solve, 120); }
+
+  function show(total, diff, n, msg) {
+    $('r-total').textContent = $('b-total').textContent = total;
+    $('r-diff').textContent = $('b-diff').textContent = diff;
+    $('r-n').textContent = n;
+    $('b-n').textContent = n === '—' ? '' : '(' + n + ')';
+    $('r-status').textContent = msg;
+  }
+
+  function solve() {
+    const list = $('r-list');
+    list.innerHTML = '';
+    hits = new Set();
+    lastResult = null;
+    $('copy').hidden = true;
+    const fail = msg => { show('—', '—', '—', msg); paintHits(); };
+
+    if (target === null) return fail('指定金額を入力してください。');
+    if (Number.isNaN(target)) return fail('指定金額は 0 以上の数値で入力してください。');
+    const bad = receipts.findIndex(v => Number.isNaN(v));
+    if (bad >= 0) return fail('領収書 ' + pad(bad) + ' の金額が数値になっていません。');
+    if (!receipts.some(v => v > 0)) return fail('領収書の金額を追加してください。');
+
+    let r;
+    try { r = bestSubset(receipts, target); }
+    catch (e) { return fail('金額が大きすぎて計算できません。指定金額を 2,000 万円以下にしてください。'); }
+
+    hits = new Set(r.idx);
+    lastResult = r;
+    show(fmt(r.sum), fmt(target - r.sum), r.idx.length + ' 枚',
+      r.idx.length === 0 ? '指定金額以下になる組み合わせがありません。'
+        : r.sum === target ? '指定金額ちょうどの組み合わせです。'
+        : '指定金額以下で最も近い組み合わせです。');
+    r.idx.forEach(i => {
+      const li = document.createElement('li');
+      li.innerHTML = '<span>領収書 ' + pad(i) + '</span><span>' + fmt(receipts[i]) + '</span>';
+      list.appendChild(li);
+    });
+    $('copy').hidden = r.idx.length === 0;
+    paintHits();
+  }
+
+  function setTargetInput() {
+    $('target').value = target === null || Number.isNaN(target) ? '' : target.toLocaleString('ja-JP');
+  }
+
+  function toast(msg) {
+    const t = $('toast');
+    t.textContent = msg; t.hidden = false;
+    clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 1800);
+  }
+
+  // 指定金額
+  const tIn = $('target');
+  tIn.addEventListener('focus', () => tIn.select());
+  tIn.addEventListener('input', () => { target = parse(tIn.value); save(); schedule(); });
+  tIn.addEventListener('blur', () => { if (Number.isFinite(target)) setTargetInput(); });
+  tIn.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('new-amount').focus(); } });
+
+  // 1件ずつ追加（キーボードを閉じずに連続入力できる）
+  $('adder').addEventListener('submit', e => {
+    e.preventDefault();
+    const inp = $('new-amount');
+    const v = parse(inp.value);
+    if (v === null) return;
+    if (Number.isNaN(v)) { toast('数値で入力してください'); return; }
+    receipts.push(v);
+    inp.value = '';
+    inp.focus();
+    save(); renderLedger(); solve();
+  });
+
+  // まとめて入力
+  $('toggle-bulk').addEventListener('click', () => {
+    $('bulk').hidden = !$('bulk').hidden;
+    if (!$('bulk').hidden) $('bulk-text').focus();
+  });
+  function bulk(replace) {
+    const vals = $('bulk-text').value.split(/[\n,，、\s]+/).map(parse).filter(v => v !== null && !Number.isNaN(v));
+    if (!vals.length) { toast('読み取れる金額がありません'); return; }
+    receipts = replace ? vals : receipts.concat(vals);
+    $('bulk-text').value = '';
+    $('bulk').hidden = true;
+    toast(vals.length + ' 件追加しました');
+    save(); renderLedger(); solve();
+  }
+  $('bulk-add').addEventListener('click', () => bulk(false));
+  $('bulk-replace').addEventListener('click', () => bulk(true));
+
+  // サンプル・消去
+  $('sample').addEventListener('click', () => {
+    target = SAMPLE.target; receipts = SAMPLE.receipts.slice();
+    setTargetInput(); save(); renderLedger(); solve();
+  });
+  $('clear').addEventListener('click', () => { $('confirm-clear').hidden = false; });
+  $('clear-no').addEventListener('click', () => { $('confirm-clear').hidden = true; });
+  $('clear-yes').addEventListener('click', () => {
+    target = null; receipts = [];
+    $('confirm-clear').hidden = true;
+    setTargetInput(); save(); renderLedger(); solve();
+  });
+
+  // 結果
+  $('to-detail').addEventListener('click', () => $('detail').scrollIntoView({ block: 'start' }));
+  $('copy').addEventListener('click', () => {
+    if (!lastResult) return;
+    const lines = ['指定金額 ' + fmt(target), '合計 ' + fmt(lastResult.sum) + '（残り ' + fmt(target - lastResult.sum) + '）']
+      .concat(lastResult.idx.map(i => '・領収書' + pad(i) + ' ' + fmt(receipts[i])));
+    const text = lines.join('\n');
+    const done = () => toast('コピーしました');
+    const fallback = () => {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) { toast('コピーできませんでした'); }
+      ta.remove();
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+  });
+
+  // 起動：保存データがあれば復元、なければ空の状態
+  const saved = load();
+  if (saved) {
+    target = typeof saved.target === 'number' ? saved.target : null;
+    receipts = saved.receipts.map(v => (typeof v === 'number' ? v : null));
+  }
+  setTargetInput();
+  renderLedger();
+  solve();
+})();
+</script>
+</body>
+</html>
